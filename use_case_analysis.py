@@ -489,5 +489,79 @@ def build_cluster_summary(clean_records: list[dict], clusters: dict) -> pd.DataF
     ).drop(columns=["_conf_sort"]).reset_index(drop=True)
     return df
 
+def print_top_clusters(df: pd.DataFrame, n: int = 15):
+    print(f"\n{'-'*70}")
+    print(f"TOP {n} CLUSTERS BY DISTINCT CALL COUNT")
+    print(f"{'-'*70}")
+
+    for _, row in df.head(n).iterrows():
+        flags = []
+        if row["safety_nonsafety_bleed"]:
+            flags.append("⚠ BLEED")
+        if row["has_deployment_blocker"]:
+            flags.append("⚠ BLOCKER")
+        
+        flag_str = "  " + "  ".join(flags) if flags else ""
+
+        print(
+            f"\n[{row['distinct_calls']} calls | {row['total_mentions']} mentions"
+            f" | {row['confidence']} confidence | source: {row['evidence_source']}]"
+            f"{flag_str}"
+        )
+
+        print(f"  {row['cluster_name']}")
+        print(f"  Members: {row['member_labels']}")
+        if row["evidence_sample"]:
+            print(f"  Evidence: {row['evidence_sample'][:150]}...")
 
 
+# ── Main ──────────────────────────────────────────────────────────────────────
+ 
+def main():
+    # 1. Load all calls
+    all_records = load_all_calls(DATA_DIR)
+    print(f"\nTotal use case records extracted: {len(all_records)}")
+    junk_count = sum(1 for r in all_records if r["is_junk"])
+    print(f"Junk filtered: {junk_count}")
+    blocker_count = sum(1 for r in all_records if r.get("has_deployment_blocker"))
+    print(f"Records with deployment blockers: {blocker_count}")
+ 
+    # 2. Cluster (on non-junk records only)
+    clean_records, clusters = cluster_use_cases(all_records, SIMILARITY_THRESHOLD)
+    print(f"Unique clusters formed: {len(clusters)}")
+ 
+    # 3. Build summary
+    df = build_cluster_summary(clean_records, clusters)
+ 
+    # 4. Save CSV
+    df.to_csv(OUTPUT_CLUSTERS, index=False)
+    print(f"\nCluster summary saved to: {OUTPUT_CLUSTERS}")
+ 
+    # 5. Print top clusters
+    print_top_clusters(df)
+ 
+    # 6. Summary stats
+    nonsafety = [r for r in clean_records if r["bucket"] == "nonsafety_use_cases"]
+    bleed_clusters = df[df["safety_nonsafety_bleed"] == True]
+    blocker_clusters = df[df["has_deployment_blocker"] == True]
+    customer_raised = df[df["evidence_source"].isin(["customer", "mixed"])]
+ 
+    print(f"\n{'─'*70}")
+    print(f"SUMMARY STATS")
+    print(f"{'─'*70}")
+    print(f"  Calls processed:                    {len(set(r['source_file'] for r in all_records))}")
+    print(f"  Total use case records:             {len(all_records)}")
+    print(f"  After junk filter:                  {len(clean_records)}")
+    print(f"  Non-safety records:                 {len(nonsafety)}")
+    print(f"  Clusters (total):                   {len(df)}")
+    print(f"  Clusters w/ safety/nonsafety bleed: {len(bleed_clusters)}")
+    print(f"  Clusters w/ deployment blocker:     {len(blocker_clusters)}")
+    print(f"  Clusters customer-raised:           {len(customer_raised)}")
+    print(f"  HIGH confidence clusters:           {len(df[df['confidence']=='HIGH'])}")
+    print(f"  MEDIUM confidence clusters:         {len(df[df['confidence']=='MEDIUM'])}")
+    print(f"  LOW confidence clusters:            {len(df[df['confidence']=='LOW'])}")
+ 
+ 
+if __name__ == "__main__":
+    main()
+ 

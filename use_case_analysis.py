@@ -32,7 +32,7 @@ import json
 import os
 import re
 import csv
-import pathlib as Path
+from pathlib import Path
 from collections import defaultdict
 
 import pandas as pd
@@ -84,7 +84,7 @@ BLOCKER_PHRASES = [
 ]
 
 # Text normalization
-def normalize_label(abel: str) -> str:
+def normalize_label(label: str) -> str:
     """
     Lowercase, strip punctuation, remove filler phrases, standardize word order.
     We intentionally do NOT stem (e.g., 'tracks' → 'track') because stemming
@@ -243,7 +243,7 @@ def extract_use_cases(data: dict, source_file: str) -> list[dict]:
                 continue
  
             norm = normalize_label(label)
-            evidence_str = format_evidence(evidence_list)
+            evidence_str = formal_evidence(evidence_list)
             blocker = has_deployment_blocker(evidence_list)
             source = evidence_source(evidence_list)
             evidence_count = len(evidence_list)
@@ -264,27 +264,6 @@ def extract_use_cases(data: dict, source_file: str) -> list[dict]:
             })
  
     return records
- 
- 
-def load_all_calls(data_dir: Path) -> list[dict]:
-    """Load every JSON file in data_dir. Returns flat list of use case records."""
-    all_records = []
-    json_files = sorted(data_dir.glob("*.json"))
- 
-    if not json_files:
-        raise FileNotFoundError(f"No JSON files found in {data_dir}")
- 
-    print(f"Loading {len(json_files)} call files...")
-    for fp in json_files:
-        try:
-            data = load_call(fp)
-            records = extract_use_cases(data, fp.name)
-            all_records.extend(records)
-            print(f"  {fp.name}: {len(records)} use cases extracted")
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"  WARNING: Could not parse {fp.name}: {e}")
- 
-    return all_records
  
  
 def load_all_calls(data_dir: Path) -> list[dict]:
@@ -311,7 +290,7 @@ def load_all_calls(data_dir: Path) -> list[dict]:
 
 # ── Clustering ─────────────────────────────────────────────────────────────────
 
-def cluster_use_cases(records: list[dict], threshold: float) -> list[dict]:
+def cluster_use_cases(records: list[dict], threshold: float) -> tuple:
     """
     Embed normalized labels and greedily cluster by cosine similarity.
  

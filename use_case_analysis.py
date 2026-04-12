@@ -309,3 +309,83 @@ def load_all_calls(data_dir: Path) -> list[dict]:
 
 
 
+# ── Clustering ─────────────────────────────────────────────────────────────────
+
+def cluster_use_cases(records: list[dict], threshold: float) -> list[dict]:
+    """
+    Embed normalized labels and greedily cluster by cosine similarity.
+ 
+    Strategy: greedy single-pass clustering. For each label (sorted by
+    frequency descending so common ones become cluster centroids), assign
+    it to the first existing cluster where similarity > threshold.
+    If no match, start a new cluster.
+ 
+    Why greedy over k-means: we don't know k in advance, and k-means
+    centroids drift away from readable labels. Greedy keeps cluster names
+    human-readable (they're actual labels from the data).
+ 
+    Tradeoff: greedy is order-sensitive. Sorting by frequency first
+    mitigates this — common labels are more likely to be "canonical."
+    """
+
+    # Filter junk before clustering
+    clean = [r for r in records if not r["is_junk"]]
+
+    if not clean:
+        print("WARNING: All labels filtered as junk. Check JUNK_LABELS config.")
+        return []
+    
+    # Count frequency to use as sort key
+    label_counts = defaultdict(int)
+    for r in clean:
+        label_counts[r["normalized_label"]] += 1
+
+    # Get unique labels sorted by frequency
+    unique_labels = sorted(set(r["normalized_label"] for r in clean), key=lambda l: label_counts[l], reverse=True)
+
+    print(f"\nEmbedding {len(unique_labels)} unique labels with {EMBED_MODEL}...")
+    model = SentenceTransformer(EMBED_MODEL)
+    embeddings = model.encode(unique_labels, show_progress_bar=True)
+
+    # Greedy clustering
+    clusters = {}      # cluster_id → {"centroid_label", "members": [...], "embedding"}
+
+    label_to_cluster = {}  # normalized_label → cluster_id
+ 
+    for i, label in enumerate(unique_labels):
+        emb = embeddings[i]
+        best_cluster = None
+        best_sim = 0.0
+ 
+        for cid, cluster in clusters.items():
+            sim = cosine_similarity([emb], [cluster["embedding"]])[0][0]
+            if sim > best_sim:
+                best_sim = sim
+                best_cluster = cid
+ 
+        if best_cluster is not None and best_sim >= threshold:
+            clusters[best_cluster]["members"].append(label)
+            label_to_cluster[label] = best_cluster
+        else:
+            new_id = len(clusters)
+            clusters[new_id] = {
+                "centroid_label": label,
+                "members": [label],
+                "embedding": emb,
+                "count": 0,
+            }
+            label_to_cluster[label] = new_id
+ 
+    # Attach cluster info back to records
+    for r in clean:
+        cid = label_to_cluster.get(r["normalized_label"])
+        if cid is not None:
+            r["cluster_id"] = cid
+            r["cluster_name"] = clusters[cid]["centroid_label"]
+            clusters[cid]["count"] += 1
+        else:
+            r["cluster_id"] = -1
+            r["cluster_name"] = "unclustered"
+ 
+    return clean, clusters
+

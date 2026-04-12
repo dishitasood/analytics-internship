@@ -389,3 +389,105 @@ def cluster_use_cases(records: list[dict], threshold: float) -> list[dict]:
  
     return clean, clusters
 
+# ── Output ─────────────────────────────────────────────────────────────────────
+def confidence_score(records: list[dict], bleed: bool) -> str:
+    """
+    Simple 3-tier confidence rubric per cluster:
+ 
+    HIGH:   appears in 3+ calls, customer-raised, no blocker, no bleed
+    MEDIUM: appears in 2 calls OR has bleed OR mixed evidence source
+    LOW:    single call, voxel-only source, or has deployment blocker
+ 
+    This is a heuristic — use it to prioritize human review, not as ground truth.
+    """
+
+    distinct_calls = len(set(r["source_file"] for r in records))
+    has_blocker = any(r.get("has_deployment_blocker") for r in records)
+    sources = set(r.get("evidence_source", "unknown") for r in records)
+    customer_raised = "customer" in sources or "mixed" in sources
+
+    if has_blocker:
+        return "LOW"
+    if distinct_calls >= 3 and customer_raised and not bleed:
+        return "HIGH"
+    if distinct_calls >= 2 or (customer_raised and not bleed):
+        return "MEDIUM"
+    return "LOW"
+
+def build_cluster_summary(clean_records: list[dict], clusters: dict) -> pd.DataFrame:
+    """
+    Build summary DataFrame: one row per cluster.
+ 
+    Columns:
+    - cluster_name: most frequent normalized label (human-readable centroid)
+    - total_mentions: raw count across all records
+    - distinct_calls: how many unique files this appeared in (stronger signal than raw count)
+    - safety_nonsafety_bleed: True if cluster spans both buckets (extraction ambiguity flag)
+    - has_deployment_blocker: True if any evidence quote mentions constraints
+    - evidence_source: customer / voxel / mixed (customer-raised = stronger signal)
+    - confidence: HIGH / MEDIUM / LOW rubric
+    - member_labels: all deduplicated variant phrasings in this cluster
+    - evidence_sample: one representative quote for quick human review
+    """
+
+    rows = []
+    for cid, cluster in clusters.items():
+        members_records = [r for r in clean_records if r.get("cluster_id") == cid]
+        if not members_records:
+            continue
+ 
+        files = set(r["source_file"] for r in members_records)
+        buckets = set(r["bucket"] for r in members_records)
+        bleed = len(buckets) > 1
+ 
+        has_blocker = any(r.get("has_deployment_blocker") for r in members_records)
+ 
+        # Aggregate evidence sources across cluster
+        sources = set(r.get("evidence_source", "unknown") for r in members_records)
+        if "customer" in sources and "voxel" in sources:
+            agg_source = "mixed"
+        elif "customer" in sources:
+            agg_source = "customer"
+        elif "mixed" in sources:
+            agg_source = "mixed"
+        else:
+            agg_source = "voxel"
+ 
+        # Pick the single strongest evidence sample: prefer customer-raised,
+        # highest evidence_count, no blocker
+        best = sorted(
+            [r for r in members_records if r.get("evidence")],
+            key=lambda r: (
+                r.get("evidence_source") == "customer",
+                r.get("evidence_count", 0),
+                not r.get("has_deployment_blocker", False),
+            ),
+            reverse=True,
+        )
+        evidence_sample = best[0]["evidence"][:300] if best else ""
+ 
+        conf = confidence_score(members_records, bleed)
+ 
+        rows.append({
+            "cluster_name": cluster["centroid_label"],
+            "total_mentions": len(members_records),
+            "distinct_calls": len(files),
+            "confidence": conf,
+            "safety_nonsafety_bleed": bleed,
+            "has_deployment_blocker": has_blocker,
+            "evidence_source": agg_source,
+            "member_labels": " | ".join(sorted(set(cluster["members"]))),
+            "evidence_sample": evidence_sample,
+        })
+ 
+    df = pd.DataFrame(rows)
+    # Sort: distinct calls first, then confidence tier
+    conf_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    df["_conf_sort"] = df["confidence"].map(conf_order)
+    df = df.sort_values(
+        ["distinct_calls", "_conf_sort"], ascending=[False, True]
+    ).drop(columns=["_conf_sort"]).reset_index(drop=True)
+    return df
+
+
+

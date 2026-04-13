@@ -45,4 +45,4 @@ We don't know k, and k-means centroids drift to abstract vectors that aren't rea
 
 
 Final Outputs image:
-![fina_image](final_output.jpg)
+![final_image](final_output.jpg)

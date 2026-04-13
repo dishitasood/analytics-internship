@@ -41,9 +41,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 
 # Configuration
-DATA_DIR = Path("../safety-nonsafety")
+DATA_DIR = Path("safety-nonsafety")
 OUTPUT_CLUSTERS = Path("clusters.csv")
-SIMILARITY_THRESHOLD = 0.82
+SIMILARITY_THRESHOLD = 0.78
 
 EMBED_MODEL = "all-MiniLM-L6-v2"
 
@@ -94,7 +94,7 @@ def normalize_label(label: str) -> str:
     label = label.lower().strip()
     for filler in ["real-time", "real time", "automated", "automatic"]:
         label = label.replace(filler, "")
-    label = re.sub(r"[a-z0-9 ]", " ", label)
+    label = re.sub(r"[^a-z0-9 ]", " ", label)
     label = re.sub(r"\s+", " ", label).strip()
     return label
 
@@ -127,7 +127,7 @@ def is_voxel_speaker(speaker_str: str) -> bool:
 
     return "voxelai.com" in speaker_str.lower() or "voxel.com" in speaker_str.lower()
 
-def formal_evidence(evidence_list: list) -> str:
+def format_evidence(evidence_list: list) -> str:
     """
     Flatten a list of evidence objects into a readable string:
     'Speaker Name: quote text | Speaker Name: quote text'
@@ -148,7 +148,7 @@ def formal_evidence(evidence_list: list) -> str:
                 parts.append(f"{speaker}: {quote}")
 
         elif isinstance(e, str) and e.strip():
-            parts.appned(e.strip())
+            parts.append(e.strip())
 
     return " | ".join(parts)
 
@@ -243,7 +243,7 @@ def extract_use_cases(data: dict, source_file: str) -> list[dict]:
                 continue
  
             norm = normalize_label(label)
-            evidence_str = formal_evidence(evidence_list)
+            evidence_str = format_evidence(evidence_list)
             blocker = has_deployment_blocker(evidence_list)
             source = evidence_source(evidence_list)
             evidence_count = len(evidence_list)

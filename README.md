@@ -1,6 +1,7 @@
-Voxel Analytics Internship — Take-Home Submission
-Name: Dishita Sood
-Submitted: 13 April 2026
+## Voxel Analytics Internship — Take-Home Submission
+### Name: Dishita Sood
+### Submitted: 13 April 2026
+
 Notion page where I planned everything: https://www.notion.so/Voxel-take-home-project-log-340464ca3e3c806b82cbd05d4a3f885c?source=copy_link
 
 Repo Structure:

@@ -4,16 +4,25 @@ Submitted: 13 April 2026
 
 Repo Structure:
 analytics-internship/
-├── safety-nonsafety/          
+
+├── safety-nonsafety/   
+
 │   └── *.json
+
 │
 ├── analysis/
+
 │   ├── use_case_analysis.py   (main script: loads, normalizes, clusters)
+
 │   ├── requirements.txt       (Python dependencies)
+
 │   └── clusters.csv           (output: normalized cluster summary)
+
 │
-├── memo.md                    
-├── SUBMISSION.md              
+├── memo.md 
+
+├── SUBMISSION.md   
+
 └── README.md                  
 
 Design Choices by me:
@@ -33,3 +42,7 @@ The raw JSONs are already the source of truth. The clusters.csv captures the nor
 Why greedy clustering, not k-means or DBSCAN?
 
 We don't know k, and k-means centroids drift to abstract vectors that aren't readable. DBSCAN requires tuning epsilon carefully for short-phrase embeddings. Greedy single-pass with a cosine threshold keeps cluster names as actual human-readable labels from the data, which matters when you're presenting results to a non-technical audience.
+
+
+Final Outputs image:
+![fina_image](final_output.jpg)
